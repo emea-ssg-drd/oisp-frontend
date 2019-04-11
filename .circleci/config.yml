@@ -103,7 +103,7 @@ commands:
             cd platform-launcher
             make test
 jobs:
-  build:
+  e2e-test:
     executor: vm-executor
     steps:
       - checkout-e2e
@@ -111,7 +111,7 @@ jobs:
       - setup-build-environment
       - pull-images-and-build-only-testbranch
       - e2e-test
-  pre-check:
+  build-check:
     executor: docker-executor
     steps:
       - checkout
@@ -143,7 +143,7 @@ workflows:
   version: 2.1
   workflow:
     jobs:
-      - pre-check
-      - build:
+      - build-check
+      - e2e-test:
           requires:
-            - pre-check
+            - build-check
