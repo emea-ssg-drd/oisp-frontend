@@ -80,10 +80,10 @@ commands:
             cd ${CIRCLE_PROJECT_REPONAME}
             git checkout origin/${CLONE_BRANCH}
   pull-images-and-build-only-testbranch:
-    description: "Pulls all images and only build the testbranch"
+    description: "Pull all images and only build the testbranch"
     steps:
       - run:
-          name: Checks out branch of to be tested repository
+          name: Pull all images and only build the testbranch
           shell: /bin/bash
           command: |
             cd platform-launcher
