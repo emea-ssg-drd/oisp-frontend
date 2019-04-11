@@ -2,27 +2,107 @@
 #
 # Check https://circleci.com/docs/2.0/language-javascript/ for more details
 #
-version: 2
-jobs:
-  build:
-    docker:
-      # specify the version you desire here
-      - image: circleci/node:8.0
-
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # - image: circleci/mongo:3.4.4
-
+version: 2.1
+executors:
+  vm-executor:
+    machine:
+      enabled: true
+      image: ubuntu-1604:201903-01
     working_directory: ~/repo
     environment:
       shell: /bin/bash
       TERM: xterm
-
+      TZ: "Europe/Berlin"
+  docker-executor:
+    docker:
+      - image: circleci/node:8.0
+    working_directory: ~/repo
+    environment:
+      shell: /bin/bash
+      TERM: xterm
+commands:
+  setup-build-environment:
+    description: "Setup build Environment"
+    steps:
+      - run:
+          name: Setup build environment
+          command: |
+            cd platform-launcher/platform-setup
+            sudo ./setup-ubuntu16.04.sh
+  checkout-e2e:
+    description: "Checkout E2E test"
+    steps:
+      - run:
+          name: Checkout E2E test and adjust frontend repo
+          shell: /bin/bash
+          command: |
+            echo $PWD
+            echo git clone https://github.com/${CIRCLE_PROJECT_USERNAME}/platform-launcher.git
+            git clone https://github.com/${CIRCLE_PROJECT_USERNAME}/platform-launcher.git
+            cd platform-launcher
+            git checkout develop
+            git submodule init
+            git submodule update
+            yes | make update
+  check-signed:
+    description: "Check whether latest commit is signed"
+    steps:
+      - run:
+          name: Check whether most recent commit is signed
+          command: |
+            MESSAGE=`git log -1 --pretty=%B`
+            echo "Checking whether signed"
+            if [[ "${MESSAGE}" == *Signed-off-by:*@* ]]; then
+              echo "Commit is signedoff"
+            else
+              echo "Commit is not signedoff"
+              exit 1
+            fi
+  checkout-testbranch:
+    description: "Checks out branch of repository which is to be tested"
+    steps:
+      - run:
+          name: Checks out branch of to be tested repository
+          command: |
+            cd platform-launcher/${CIRCLE_PROJECT_REPONAME}
+            git checkout origin/${CIRCLE_BRANCH}
+  pull-images-and-build-only-testbranch:
+    description: "Pulls all images and only build the testbranch"
+    steps:
+      - run:
+          name: Checks out branch of to be tested repository
+          shell: /bin/bash
+          command: |
+            cd platform-launcher
+            docker login  -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
+            export DOCKER_TAG="latest"
+            yes | make pull
+            export CONTAINERS="frontend"
+            yes | make build
+  e2e-test:
+    description: "Execute E2E test"
+    steps:
+      - run:
+          name: Execute E2E test
+          shell: /bin/bash
+          command: |
+            export DOCKER_TAG="latest"
+            cd platform-launcher
+            make test
+jobs:
+  build:
+    executor: vm-executor
+    steps:
+      - checkout-e2e
+      - checkout-testbranch
+      - setup-build-environment
+      - pull-images-and-build-only-testbranch
+      - e2e-test
+  pre-check:
+    executor: docker-executor
     steps:
       - checkout
-
-      - run:
+      - run:        
           name: Check whether most recent commit is signedoff
           shell: /bin/bash
           command: |
@@ -34,19 +114,23 @@ jobs:
               echo "Commit is not signedoff"
               exit 1
             fi
-            
-
       - run:
           shell: /bin/bash
           name: Install dependencies
           command: |
             cd public-interface
             npm install
-
-      # run tests!
       - run:
           shell: /bin/bash
           name: Run linting and tests
           command: |
             cd public-interface
             node_modules/grunt-cli/bin/grunt build-api
+workflows:
+  version: 2.1
+  workflow:
+    jobs:
+      - pre-check
+      - build:
+          requires:
+            - pre-check
